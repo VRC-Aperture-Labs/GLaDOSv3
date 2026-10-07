@@ -32,7 +32,7 @@ struct {
     .arm = PORT12,
 
     // three-wire ports
-    .claw = Brain.ThreeWirePort.A,
+    .claw = Brain.ThreeWirePort.H,
 };
 
 // define your global instances of motors and other devices here
@@ -40,7 +40,7 @@ controller controller_main = controller();
 
 motor intake = motor(portMapping.intake, false);
 motor arm = motor(portMapping.arm, true);
-pneumatics claw = pneumatics(portMapping.claw);
+digital_out claw = digital_out(portMapping.claw);
 
 struct {
     motor fl, fr, bl, br;
@@ -92,7 +92,7 @@ void toggleIntake() {
 }
 
 void setArmVelocity() {
-    if (!(controller_main.ButtonL1.pressing() ^ controller_main.ButtonL1.pressing())) {
+    if (!(controller_main.ButtonL1.pressing() ^ controller_main.ButtonL2.pressing())) {
         arm.setVelocity(0, percent);
         return;
     }
@@ -107,11 +107,11 @@ void setArmVelocity() {
 }
 
 void openClaw() {
-    claw.open();
+    claw.set(true);
 }
 
 void closeClaw() {
-    claw.close();
+    claw.set(false);
 }
 
 int main() {
@@ -122,12 +122,16 @@ int main() {
     x_drive.br.spin(forward);
 
     arm.setStopping(hold);
+    arm.setVelocity(0, percent);
+    arm.spin(forward);
+    intake.setVelocity(0, percent);
+    intake.spin(forward);
 
     controller_main.ButtonA.pressed(toggleIntake);
     controller_main.ButtonR1.pressed(openClaw);
     controller_main.ButtonR2.pressed(closeClaw);
    
-    while(1) {
+    while(wait(10,msec), 1) {
         drive(controller_main.Axis3.position(), controller_main.Axis4.position(), controller_main.Axis1.position());
         setArmVelocity();
         
