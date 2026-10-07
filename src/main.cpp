@@ -22,14 +22,14 @@ struct {
     triport::port claw;
 } portMapping = {
     // drive motors
-    .driveFrontLeft = PORT1,
-    .driveFrontRight = PORT2,
-    .driveBackLeft = PORT3,
+    .driveFrontLeft = PORT2,
+    .driveFrontRight = PORT3,
+    .driveBackLeft = PORT1,
     .driveBackRight = PORT4,
 
     // other stuff
-    .intake = PORT5,
-    .arm = PORT6,
+    .intake = PORT10,
+    .arm = PORT12,
 
     // three-wire ports
     .claw = Brain.ThreeWirePort.A,
