@@ -17,7 +17,7 @@ brain Brain = brain();
 // port settings
 struct {
     int32_t driveFrontLeft, driveFrontRight, driveBackLeft, driveBackRight,
-    intake, arm;
+    intake, arm, wrist, toggleToggler;
 
     triport::port claw;
 } portMapping = {
@@ -30,6 +30,8 @@ struct {
     // other stuff
     .intake = PORT10,
     .arm = PORT12,
+    .wrist = PORT11,
+    .toggleToggler = PORT5,
 
     // three-wire ports
     .claw = Brain.ThreeWirePort.H,
@@ -40,6 +42,8 @@ controller controller_main = controller();
 
 motor intake = motor(portMapping.intake, false);
 motor arm = motor(portMapping.arm, true);
+motor wrist = motor(portMapping.wrist, true);
+motor toggleToggler = motor(portMapping.toggleToggler, true);
 digital_out claw = digital_out(portMapping.claw);
 
 struct {
@@ -106,16 +110,17 @@ void setArmVelocity() {
     }
 }
 
-void openClaw() {
-    claw.set(true);
+void toggleClaw() {
+    static bool clawClosed = false;
+    claw.set(clawClosed = !clawClosed);
 }
 
-void closeClaw() {
-    claw.set(false);
+void toggleToggleToggler() {
+    static bool toggleTogglerEnabled = false;
+    toggleToggler.setVelocity(25 * (toggleTogglerEnabled = !toggleTogglerEnabled), percent);
 }
 
 int main() {
-    Brain.Screen.printAt( 10, 50, "Hello V5" );
     x_drive.fl.spin(forward);
     x_drive.fr.spin(forward);
     x_drive.bl.spin(forward);
@@ -126,14 +131,18 @@ int main() {
     arm.spin(forward);
     intake.setVelocity(0, percent);
     intake.spin(forward);
+    toggleToggler.setVelocity(0, percent);
+    toggleToggler.spin(forward);
 
     controller_main.ButtonA.pressed(toggleIntake);
-    controller_main.ButtonR1.pressed(openClaw);
-    controller_main.ButtonR2.pressed(closeClaw);
+    controller_main.ButtonR1.pressed(toggleClaw);
+    controller_main.ButtonR2.pressed(toggleToggleToggler);
    
     while(wait(10,msec), 1) {
         drive(controller_main.Axis3.position(), controller_main.Axis4.position(), controller_main.Axis1.position());
         setArmVelocity();
+        Brain.Screen.printAt(10, 50, "Arm Pos: %f", arm.position(degrees));
+        Brain.Screen.printAt(10, 65, "Wrist Pos: %f", wrist.position(degrees));
         
         // Allow other tasks to run
         this_thread::sleep_for(10);
