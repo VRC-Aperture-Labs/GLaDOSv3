@@ -97,11 +97,11 @@ void setArmVelocity() {
         return;
     }
     if (controller_main.ButtonL1.pressing()) {
-        arm.setVelocity(100, percent);
+        arm.setVelocity(50, percent);
         return;
     }
     if (controller_main.ButtonL2.pressing()) {
-        arm.setVelocity(-100, percent);
+        arm.setVelocity(-50, percent);
         return;
     }
 }
