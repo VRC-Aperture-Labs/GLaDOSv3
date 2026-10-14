@@ -153,8 +153,10 @@ int main() {
 
     arm.setStopping(hold);
     arm.stop();
+    arm.setMaxTorque(100, percent);
     wrist.setStopping(hold);
     wrist.stop();
+    wrist.setMaxTorque(100, percent);
     intake.setVelocity(0, percent);
     intake.spin(forward);
     toggleToggler.setVelocity(0, percent);
