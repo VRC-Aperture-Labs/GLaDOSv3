@@ -42,7 +42,7 @@ controller controller_main = controller();
 
 motor intake = motor(portMapping.intake, false);
 motor arm = motor(portMapping.arm, true);
-motor wrist = motor(portMapping.wrist, true);
+motor wrist = motor(portMapping.wrist, false);
 motor toggleToggler = motor(portMapping.toggleToggler, true);
 digital_out claw = digital_out(portMapping.claw);
 
@@ -97,15 +97,36 @@ void toggleIntake() {
 
 void setArmVelocity() {
     if (!(controller_main.ButtonL1.pressing() ^ controller_main.ButtonL2.pressing())) {
+        arm.stop();
         arm.setVelocity(0, percent);
         return;
     }
     if (controller_main.ButtonL1.pressing()) {
-        arm.setVelocity(50, percent);
+        arm.spin(forward);
+        arm.setVelocity(20, percent);
         return;
     }
     if (controller_main.ButtonL2.pressing()) {
-        arm.setVelocity(-50, percent);
+        arm.spin(forward);
+        arm.setVelocity(-20, percent);
+        return;
+    }
+}
+
+void setWristVelocity() {
+    if (!(controller_main.ButtonUp.pressing() ^ controller_main.ButtonDown.pressing())) {
+        wrist.stop();
+        wrist.setVelocity(0, percent);
+        return;
+    }
+    if (controller_main.ButtonUp.pressing()) {
+        wrist.spin(forward);
+        wrist.setVelocity(25, percent);
+        return;
+    }
+    if (controller_main.ButtonDown.pressing()) {
+        wrist.spin(forward);
+        wrist.setVelocity(-25, percent);
         return;
     }
 }
@@ -122,13 +143,18 @@ void toggleToggleToggler() {
 
 int main() {
     x_drive.fl.spin(forward);
+    x_drive.fl.setStopping(hold);
     x_drive.fr.spin(forward);
+    x_drive.fr.setStopping(hold);
     x_drive.bl.spin(forward);
+    x_drive.bl.setStopping(hold);
     x_drive.br.spin(forward);
+    x_drive.br.setStopping(hold);
 
     arm.setStopping(hold);
-    arm.setVelocity(0, percent);
-    arm.spin(forward);
+    arm.stop();
+    wrist.setStopping(hold);
+    wrist.stop();
     intake.setVelocity(0, percent);
     intake.spin(forward);
     toggleToggler.setVelocity(0, percent);
@@ -138,13 +164,11 @@ int main() {
     controller_main.ButtonR1.pressed(toggleClaw);
     controller_main.ButtonR2.pressed(toggleToggleToggler);
    
-    while(wait(10,msec), 1) {
+    while(this_thread::sleep_for(10), 1) {
         drive(controller_main.Axis3.position(), controller_main.Axis4.position(), controller_main.Axis1.position());
         setArmVelocity();
+        setWristVelocity();
         Brain.Screen.printAt(10, 50, "Arm Pos: %f", arm.position(degrees));
         Brain.Screen.printAt(10, 65, "Wrist Pos: %f", wrist.position(degrees));
-        
-        // Allow other tasks to run
-        this_thread::sleep_for(10);
     }
 }
