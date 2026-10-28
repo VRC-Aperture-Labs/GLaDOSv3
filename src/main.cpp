@@ -46,6 +46,15 @@ motor wrist = motor(portMapping.wrist, false);
 motor toggleToggler = motor(portMapping.toggleToggler, true);
 digital_out claw = digital_out(portMapping.claw);
 
+// Calibration: start with the arm straight down and the claw horizontal.
+// These are motor degrees per joint degree, including any external gearing.
+// Negate a ratio if that motor's positive direction lowers its joint.
+constexpr double armMotorDegreesPerJointDegree = 84.0 / 36.0;
+constexpr double wristMotorDegreesPerJointDegree = 60.0 / 12.0;
+constexpr double wristLevelGain = 1.0;
+constexpr double wristLevelMaxSpeed = 25.0;
+bool wristLevelingEnabled = false;
+
 struct {
     motor fl, fr, bl, br;
 } x_drive = {
@@ -114,6 +123,27 @@ void setArmVelocity() {
 }
 
 void setWristVelocity() {
+    // Manual wrist input cancels automatic leveling.
+    if (controller_main.ButtonUp.pressing() || controller_main.ButtonDown.pressing())
+        wristLevelingEnabled = false;
+
+    if (wristLevelingEnabled) {
+        // Encoders measure changes from the startup pose. Cancel the arm's
+        // rotation to preserve the claw's horizontal startup orientation.
+        const double armAngleChange = arm.position(degrees) / armMotorDegreesPerJointDegree;
+        const double target = -armAngleChange * wristMotorDegreesPerJointDegree;
+        const double error = target - wrist.position(degrees);
+        double speed = error * wristLevelGain;
+        if (speed > wristLevelMaxSpeed) speed = wristLevelMaxSpeed;
+        if (speed < -wristLevelMaxSpeed) speed = -wristLevelMaxSpeed;
+
+        if (fabs(error) < 0.5)
+            wrist.stop(hold);
+        else
+            wrist.spin(forward, speed, percent);
+        return;
+    }
+
     if (!(controller_main.ButtonUp.pressing() ^ controller_main.ButtonDown.pressing())) {
         wrist.stop();
         wrist.setVelocity(0, percent);
@@ -129,6 +159,10 @@ void setWristVelocity() {
         wrist.setVelocity(-25, percent);
         return;
     }
+}
+
+void toggleWristLeveling() {
+    wristLevelingEnabled = !wristLevelingEnabled;
 }
 
 void toggleClaw() {
@@ -157,6 +191,9 @@ int main() {
     wrist.setStopping(hold);
     wrist.stop();
     wrist.setMaxTorque(100, percent);
+    // Zero at startup: arm straight down, claw horizontal.
+    arm.setPosition(0, degrees);
+    wrist.setPosition(0, degrees);
     intake.setVelocity(0, percent);
     intake.spin(forward);
     toggleToggler.setVelocity(0, percent);
@@ -165,6 +202,7 @@ int main() {
     controller_main.ButtonA.pressed(toggleIntake);
     controller_main.ButtonR1.pressed(toggleClaw);
     controller_main.ButtonR2.pressed(toggleToggleToggler);
+    controller_main.ButtonRight.pressed(toggleWristLeveling);
    
     while(this_thread::sleep_for(10), 1) {
         drive(controller_main.Axis3.position(), controller_main.Axis4.position(), controller_main.Axis1.position());
