@@ -49,10 +49,10 @@ digital_out claw = digital_out(portMapping.claw);
 // Calibration: start with the arm straight down and the claw horizontal.
 // These are motor degrees per joint degree, including any external gearing.
 // Negate a ratio if that motor's positive direction lowers its joint.
-constexpr double armMotorDegreesPerJointDegree = 84.0 / 36.0;
-constexpr double wristMotorDegreesPerJointDegree = 60.0 / 12.0;
-constexpr double wristLevelGain = 1.0;
-constexpr double wristLevelMaxSpeed = 25.0;
+constexpr double armMotorDegreesPerJointDegree = 84.0 * 36 / 36.0;
+constexpr double wristMotorDegreesPerJointDegree = 60.0 * 18 / 12.0;
+constexpr double wristLevelGain = 1;
+constexpr double wristLevelMaxSpeed = 35.0;
 bool wristLevelingEnabled = false;
 
 struct {
@@ -177,13 +177,13 @@ void toggleToggleToggler() {
 
 int main() {
     x_drive.fl.spin(forward);
-    x_drive.fl.setStopping(hold);
+    x_drive.fl.setStopping(brake);
     x_drive.fr.spin(forward);
-    x_drive.fr.setStopping(hold);
+    x_drive.fr.setStopping(brake);
     x_drive.bl.spin(forward);
-    x_drive.bl.setStopping(hold);
+    x_drive.bl.setStopping(brake);
     x_drive.br.spin(forward);
-    x_drive.br.setStopping(hold);
+    x_drive.br.setStopping(brake);
 
     arm.setStopping(hold);
     arm.stop();
