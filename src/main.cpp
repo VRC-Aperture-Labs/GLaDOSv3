@@ -8,65 +8,72 @@
 /*----------------------------------------------------------------------------*/
 #include "vex.h"
 #include "math.h"
+#include <mutex>
 
 using namespace vex;
 
 // A global instance of vex::brain used for printing to the V5 brain screen
-brain Brain = brain();
+brain robotBrain = brain();
 
 // port settings
 struct {
-    int32_t driveFrontLeft, driveFrontRight, driveBackLeft, driveBackRight,
-    intake, arm, wrist, toggleToggler;
+    int32_t frontLeftDrivePort, frontRightDrivePort, backLeftDrivePort, backRightDrivePort,
+    intakePort, armPort, wristPort, auxiliaryPort;
 
-    triport::port claw;
+    triport::port clawPort;
 } portMapping = {
     // drive motors
-    .driveFrontLeft = PORT2,
-    .driveFrontRight = PORT3,
-    .driveBackLeft = PORT1,
-    .driveBackRight = PORT4,
+    .frontLeftDrivePort = PORT2,
+    .frontRightDrivePort = PORT3,
+    .backLeftDrivePort = PORT1,
+    .backRightDrivePort = PORT4,
 
     // other stuff
-    .intake = PORT10,
-    .arm = PORT12,
-    .wrist = PORT11,
-    .toggleToggler = PORT5,
+    .intakePort = PORT10,
+    .armPort = PORT12,
+    .wristPort = PORT11,
+    .auxiliaryPort = PORT5,
 
     // three-wire ports
-    .claw = Brain.ThreeWirePort.H,
+    .clawPort = robotBrain.ThreeWirePort.H,
 };
 
 // define your global instances of motors and other devices here
-controller controller_main = controller();
+controller driverController = controller();
 
-motor intake = motor(portMapping.intake, false);
-motor arm = motor(portMapping.arm, true);
-motor wrist = motor(portMapping.wrist, false);
-motor toggleToggler = motor(portMapping.toggleToggler, true);
-digital_out claw = digital_out(portMapping.claw);
+motor intakeMotor = motor(portMapping.intakePort, false);
+motor armMotor = motor(portMapping.armPort, true);
+motor wristMotor = motor(portMapping.wristPort, false);
+motor auxiliaryMotor = motor(portMapping.auxiliaryPort, true);
+digital_out clawSolenoid = digital_out(portMapping.clawPort);
 
 // Calibration: start with the arm straight down and the claw horizontal.
 // These are motor degrees per joint degree, including any external gearing.
 // Negate a ratio if that motor's positive direction lowers its joint.
 constexpr double armMotorDegreesPerJointDegree = 84.0 * 36 / 36.0;
 constexpr double wristMotorDegreesPerJointDegree = 60.0 * 18 / 12.0;
-constexpr double wristLevelGain = 1;
-constexpr double wristLevelMaxSpeed = 35.0;
+constexpr double wristLevelingProportionalGain = 1;
+constexpr double wristLevelingMaxSpeedPercent = 35.0;
 bool wristLevelingEnabled = false;
 
 bool intakeEnabled = false;
 bool intakeReversed = false;
+vex::mutex intakeControlMutex;
 
-double H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf = 0.25;
+double driveSpeedMultiplier = 0.25;
+
+bool clawClosed = false;
+
+bool pickupRunning = false;
+vex::mutex pickupControlMutex;
 
 struct {
-    motor fl, fr, bl, br;
-} x_drive = {
-    .fl = motor(portMapping.driveFrontLeft, false),
-    .fr = motor(portMapping.driveFrontRight, true),
-    .bl = motor(portMapping.driveBackLeft, false),
-    .br = motor(portMapping.driveBackRight, true),
+    motor frontLeft, frontRight, backLeft, backRight;
+} driveMotors = {
+    .frontLeft = motor(portMapping.frontLeftDrivePort, false),
+    .frontRight = motor(portMapping.frontRightDrivePort, true),
+    .backLeft = motor(portMapping.backLeftDrivePort, false),
+    .backRight = motor(portMapping.backRightDrivePort, true),
 };
 
 // numbers for true north system:
@@ -79,159 +86,247 @@ struct {
 double trueNorth() {
     // calculates delta degrees from true north to current position
     // positive return value means clockwise
-    double wheelCircumference = 4 * M_PI;
-    double wheelCircleCircumference = 14.75 * M_PI;
+    double wheelCircumferenceInches = 4 * M_PI;
+    double wheelPathCircumferenceInches = 14.75 * M_PI;
 
     // average wheel positions
-    double pos = (x_drive.fl.position(deg) - x_drive.fr.position(deg) + x_drive.bl.position(deg) - x_drive.br.position(deg)) / 4;
+    double averageWheelPositionDegrees = (driveMotors.frontLeft.position(deg) - driveMotors.frontRight.position(deg) + driveMotors.backLeft.position(deg) - driveMotors.backRight.position(deg)) / 4;
 
-    double wheelDistance = pos * (wheelCircumference); // distance wheel has moved along the ground
-    double amountTurned = wheelDistance / wheelCircleCircumference; // amount turned as a decimal 0 to 1
-    double degreesTurned = amountTurned * 360; // turn amountTurned into degrees
-    return degreesTurned;
+    double wheelTravelInches = averageWheelPositionDegrees * (wheelCircumferenceInches); // distance wheel has moved along the ground
+    double robotTurnFraction = wheelTravelInches / wheelPathCircumferenceInches; // amount turned as a decimal 0 to 1
+    double robotHeadingDegrees = robotTurnFraction * 360; // convert the turn fraction to degrees
+    return robotHeadingDegrees;
 }
 
-void brusCxCHp9yrboiTZn7qViCYaLbBqTjbNZQH9o6sG8hragEpzW() {
-    if (H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf == 0.25) {
-        H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf = 0.75;
-    } else if (H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf == 0.75) {
-        H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf = 0.25;
+void toggleDriveSpeed() {
+    if (driveSpeedMultiplier == 0.25) {
+        driveSpeedMultiplier = 0.75;
+    } else if (driveSpeedMultiplier == 0.75) {
+        driveSpeedMultiplier = 0.25;
     } else {
-        H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf = 0.25;
+        driveSpeedMultiplier = 0.25;
     }
 }
 
-void drive(double forward, double right, double rotate) {
-    x_drive.fl.setVelocity((forward + right + rotate) * H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf, percent);
-    x_drive.fr.setVelocity((forward - right - rotate) * H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf, percent);
-    x_drive.bl.setVelocity((forward - right + rotate) * H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf, percent);
-    x_drive.br.setVelocity((forward + right - rotate) * H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf, percent);
+void drive(double forwardInputPercent, double strafeInputPercent, double rotationInputPercent) {
+    driveMotors.frontLeft.setVelocity((forwardInputPercent + strafeInputPercent + rotationInputPercent) * driveSpeedMultiplier, percent);
+    driveMotors.frontRight.setVelocity((forwardInputPercent - strafeInputPercent - rotationInputPercent) * driveSpeedMultiplier, percent);
+    driveMotors.backLeft.setVelocity((forwardInputPercent - strafeInputPercent + rotationInputPercent) * driveSpeedMultiplier, percent);
+    driveMotors.backRight.setVelocity((forwardInputPercent + strafeInputPercent - rotationInputPercent) * driveSpeedMultiplier, percent);
 }
 
 void toggleIntake() {
-    if (intakeEnabled)
-        intake.setVelocity(0, percent);
-    else
-        intakeReversed = false;
-        intake.setVelocity(100, percent);
-    
+    std::lock_guard<vex::mutex> intakeControlLock(intakeControlMutex);
     intakeEnabled = !intakeEnabled;
+    intakeReversed = false;
+
+    if (intakeEnabled) {
+        intakeMotor.spin(forward, 100, percent);
+    } else {
+        intakeMotor.stop();
+    }
 }
 
 void reverseIntake() {
+    std::lock_guard<vex::mutex> intakeControlLock(intakeControlMutex);
+    if (!intakeEnabled) return;
+
     intakeReversed = !intakeReversed;
-    if (intakeReversed && intakeEnabled) {
-        intake.setVelocity(-100, percent);
-    }
+    intakeMotor.spin(intakeReversed ? reverse : forward, 100, percent);
 }
 
 void setArmVelocity() {
-    if (!(controller_main.ButtonL1.pressing() ^ controller_main.ButtonL2.pressing())) {
-        arm.stop();
-        arm.setVelocity(0, percent);
+    std::lock_guard<vex::mutex> pickupControlLock(pickupControlMutex);
+    if (pickupRunning) return;
+
+    if (!(driverController.ButtonL1.pressing() ^ driverController.ButtonL2.pressing())) {
+        armMotor.stop();
+        armMotor.setVelocity(0, percent);
         return;
     }
-    if (controller_main.ButtonL1.pressing()) {
-        arm.spin(forward);
-        arm.setVelocity(20, percent);
+    if (driverController.ButtonL1.pressing()) {
+        armMotor.spin(forward);
+        armMotor.setVelocity(20, percent);
         return;
     }
-    if (controller_main.ButtonL2.pressing()) {
-        arm.spin(forward);
-        arm.setVelocity(-20, percent);
+    if (driverController.ButtonL2.pressing()) {
+        armMotor.spin(forward);
+        armMotor.setVelocity(-20, percent);
         return;
     }
 }
 
 void setWristVelocity() {
+    std::lock_guard<vex::mutex> pickupControlLock(pickupControlMutex);
+    if (pickupRunning) return;
+
     // Manual wrist input cancels automatic leveling.
-    if (controller_main.ButtonUp.pressing() || controller_main.ButtonDown.pressing())
+    if (driverController.ButtonUp.pressing() || driverController.ButtonDown.pressing())
         wristLevelingEnabled = false;
 
     if (wristLevelingEnabled) {
         // Encoders measure changes from the startup pose. Cancel the arm's
         // rotation to preserve the claw's horizontal startup orientation.
-        const double armAngleChange = arm.position(degrees) / armMotorDegreesPerJointDegree;
-        const double target = -armAngleChange * wristMotorDegreesPerJointDegree;
-        const double error = target - wrist.position(degrees);
-        double speed = error * wristLevelGain;
-        if (speed > wristLevelMaxSpeed) speed = wristLevelMaxSpeed;
-        if (speed < -wristLevelMaxSpeed) speed = -wristLevelMaxSpeed;
+        const double armAngleChangeDegrees = armMotor.position(degrees) / armMotorDegreesPerJointDegree;
+        const double targetWristPositionDegrees = -armAngleChangeDegrees * wristMotorDegreesPerJointDegree;
+        const double wristPositionErrorDegrees = targetWristPositionDegrees - wristMotor.position(degrees);
+        double wristSpeedPercent = wristPositionErrorDegrees * wristLevelingProportionalGain;
+        if (wristSpeedPercent > wristLevelingMaxSpeedPercent) wristSpeedPercent = wristLevelingMaxSpeedPercent;
+        if (wristSpeedPercent < -wristLevelingMaxSpeedPercent) wristSpeedPercent = -wristLevelingMaxSpeedPercent;
 
-        if (fabs(error) < 0.5)
-            wrist.stop(hold);
+        if (fabs(wristPositionErrorDegrees) < 0.5)
+            wristMotor.stop(hold);
         else
-            wrist.spin(forward, speed, percent);
+            wristMotor.spin(forward, wristSpeedPercent, percent);
         return;
     }
 
-    if (!(controller_main.ButtonUp.pressing() ^ controller_main.ButtonDown.pressing())) {
-        wrist.stop();
-        wrist.setVelocity(0, percent);
+    if (!(driverController.ButtonUp.pressing() ^ driverController.ButtonDown.pressing())) {
+        wristMotor.stop();
+        wristMotor.setVelocity(0, percent);
         return;
     }
-    if (controller_main.ButtonUp.pressing()) {
-        wrist.spin(forward);
-        wrist.setVelocity(25, percent);
+    if (driverController.ButtonUp.pressing()) {
+        wristMotor.spin(forward);
+        wristMotor.setVelocity(25, percent);
         return;
     }
-    if (controller_main.ButtonDown.pressing()) {
-        wrist.spin(forward);
-        wrist.setVelocity(-25, percent);
+    if (driverController.ButtonDown.pressing()) {
+        wristMotor.spin(forward);
+        wristMotor.setVelocity(-25, percent);
         return;
     }
 }
 
 void toggleWristLeveling() {
+    std::lock_guard<vex::mutex> pickupControlLock(pickupControlMutex);
+    if (pickupRunning) return;
+
     wristLevelingEnabled = !wristLevelingEnabled;
 }
 
 void toggleClaw() {
-    static bool clawClosed = false;
-    claw.set(clawClosed = !clawClosed);
+    std::lock_guard<vex::mutex> pickupControlLock(pickupControlMutex);
+    if (pickupRunning) return;
+
+    clawSolenoid.set(clawClosed = !clawClosed);
 }
 
-void toggleToggleToggler() {
-    static bool toggleTogglerEnabled = false;
-    toggleToggler.setVelocity(25 * (toggleTogglerEnabled = !toggleTogglerEnabled), percent);
+void toggleAuxiliaryMotor() {
+    static bool auxiliaryMotorEnabled = false;
+    auxiliaryMotor.setVelocity(25 * (auxiliaryMotorEnabled = !auxiliaryMotorEnabled), percent);
+}
+
+// Manual joint input cancels pickup; normal control resumes after cleanup.
+bool pickupCancelled() {
+    return driverController.ButtonL1.pressing() || driverController.ButtonL2.pressing()
+        || driverController.ButtonUp.pressing() || driverController.ButtonDown.pressing();
+}
+
+bool waitForPickupMotion() {
+    while (!armMotor.isDone() || !wristMotor.isDone()) {
+        if (pickupCancelled()) return false;
+        wait(5, msec);
+    }
+    return !pickupCancelled();
+}
+
+bool pickupPause() {
+    for (int elapsedMilliseconds = 0; elapsedMilliseconds < 125; elapsedMilliseconds += 5) {
+        if (pickupCancelled()) return false;
+        wait(5, msec);
+    }
+    return !pickupCancelled();
+}
+
+void pickupFromIntake() {
+    // Ignore another pickup request until this sequence has fully exited.
+    {
+        std::lock_guard<vex::mutex> pickupControlLock(pickupControlMutex);
+        if (pickupRunning) return;
+        pickupRunning = true;
+        wristLevelingEnabled = false;
+        armMotor.stop(hold);
+        wristMotor.stop(hold);
+    }
+
+    // Early exits still pass through the cleanup below.
+    auto runPickupSequence = []() {
+        if (pickupCancelled()) return;
+
+        clawSolenoid.set(true);
+        clawClosed = true;
+        
+        wristMotor.spinToPosition(12.0, degrees, 35, velocityUnits::pct, false);
+        if (!waitForPickupMotion() || !pickupPause()) return;
+        armMotor.spinToPosition(-300, degrees, 35, velocityUnits::pct, false); // -188.8
+        if (!waitForPickupMotion()) return;
+
+        clawSolenoid.set(false);
+        clawClosed = false;
+
+        armMotor.spinToPosition(-200, degrees, 35, velocityUnits::pct, false);
+        if (!waitForPickupMotion()) return;
+        wristMotor.spinToPosition(-275.0, degrees, 35, velocityUnits::pct, false);
+        if (!waitForPickupMotion() || !pickupPause()) return;
+
+        clawSolenoid.set(true);
+        clawClosed = true;
+        if (!pickupPause()) return;
+
+        wristMotor.spinToPosition(56.8, degrees, 35, velocityUnits::pct, false);
+        if (!waitForPickupMotion() || !pickupPause()) return;
+
+        armMotor.spinToPosition(54.4, degrees, 35, velocityUnits::pct, false);
+        // wristMotor.spinToPosition(-114.0, degrees, 35, velocityUnits::pct, false);
+        waitForPickupMotion();
+    };
+    runPickupSequence();
+
+    armMotor.stop(hold);
+    wristMotor.stop(hold);
+    std::lock_guard<vex::mutex> pickupControlLock(pickupControlMutex);
+    pickupRunning = false;
 }
 
 int main() {
-    x_drive.fl.spin(forward);
-    x_drive.fl.setStopping(brake);
-    x_drive.fr.spin(forward);
-    x_drive.fr.setStopping(brake);
-    x_drive.bl.spin(forward);
-    x_drive.bl.setStopping(brake);
-    x_drive.br.spin(forward);
-    x_drive.br.setStopping(brake);
+    driveMotors.frontLeft.spin(forward);
+    driveMotors.frontLeft.setStopping(brake);
+    driveMotors.frontRight.spin(forward);
+    driveMotors.frontRight.setStopping(brake);
+    driveMotors.backLeft.spin(forward);
+    driveMotors.backLeft.setStopping(brake);
+    driveMotors.backRight.spin(forward);
+    driveMotors.backRight.setStopping(brake);
 
-    arm.setStopping(hold);
-    arm.stop();
-    arm.setMaxTorque(100, percent);
-    wrist.setStopping(hold);
-    wrist.stop();
-    wrist.setMaxTorque(100, percent);
+    armMotor.setStopping(hold);
+    // armMotor.setStopping(coast);
+    armMotor.stop();
+    armMotor.setMaxTorque(100, percent);
+    wristMotor.setStopping(hold);
+    // wristMotor.setStopping(coast);
+    wristMotor.stop();
+    wristMotor.setMaxTorque(100, percent);
     // Zero at startup: arm straight down, claw horizontal.
-    arm.setPosition(0, degrees);
-    wrist.setPosition(0, degrees);
-    intake.setVelocity(0, percent);
-    intake.spin(forward);
-    toggleToggler.setVelocity(0, percent);
-    toggleToggler.spin(forward);
+    armMotor.setPosition(0, degrees);
+    wristMotor.setPosition(0, degrees);
+    intakeMotor.stop();
+    auxiliaryMotor.setVelocity(0, percent);
+    auxiliaryMotor.spin(forward);
 
-    controller_main.ButtonA.pressed(toggleIntake);
-    controller_main.ButtonR1.pressed(toggleClaw);
-    controller_main.ButtonR2.pressed(toggleToggleToggler);
-    controller_main.ButtonRight.pressed(toggleWristLeveling);
-    controller_main.ButtonB.pressed(reverseIntake);
-    controller_main.ButtonY.pressed(brusCxCHp9yrboiTZn7qViCYaLbBqTjbNZQH9o6sG8hragEpzW);
+    driverController.ButtonA.pressed(toggleIntake);
+    driverController.ButtonR1.pressed(toggleClaw);
+    driverController.ButtonR2.pressed(toggleAuxiliaryMotor);
+    driverController.ButtonRight.pressed(toggleWristLeveling);
+    driverController.ButtonB.pressed(reverseIntake);
+    driverController.ButtonY.pressed(toggleDriveSpeed);
+    driverController.ButtonLeft.pressed(pickupFromIntake);
    
     while(this_thread::sleep_for(10), 1) {
-        drive(controller_main.Axis3.position(), controller_main.Axis4.position(), controller_main.Axis1.position());
+        drive(driverController.Axis3.position(), driverController.Axis4.position(), driverController.Axis1.position());
         setArmVelocity();
         setWristVelocity();
-        Brain.Screen.printAt(10, 50, "Arm Pos: %f", arm.position(degrees));
-        Brain.Screen.printAt(10, 65, "Wrist Pos: %f", wrist.position(degrees));
+        robotBrain.Screen.printAt(10, 50, "Arm Pos: %f", armMotor.position(degrees));
+        robotBrain.Screen.printAt(10, 65, "Wrist Pos: %f", wristMotor.position(degrees));
     }
 }
