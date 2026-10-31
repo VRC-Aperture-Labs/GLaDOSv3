@@ -14,6 +14,7 @@ using namespace vex;
 
 // A global instance of vex::brain used for printing to the V5 brain screen
 brain robotBrain = brain();
+competition robotCompetition;
 
 // port settings
 struct {
@@ -113,6 +114,45 @@ void drive(double forwardInputPercent, double strafeInputPercent, double rotatio
     driveMotors.frontRight.setVelocity((forwardInputPercent - strafeInputPercent - rotationInputPercent) * driveSpeedMultiplier, percent);
     driveMotors.backLeft.setVelocity((forwardInputPercent - strafeInputPercent + rotationInputPercent) * driveSpeedMultiplier, percent);
     driveMotors.backRight.setVelocity((forwardInputPercent + strafeInputPercent - rotationInputPercent) * driveSpeedMultiplier, percent);
+    driveMotors.frontLeft.spin(forward);
+    driveMotors.frontRight.spin(forward);
+    driveMotors.backLeft.spin(forward);
+    driveMotors.backRight.spin(forward);
+}
+
+// automomnus (this is correct spelling do not change)
+constexpr int autonomousRightMilliseconds = 1500;
+constexpr int autonomousForwardMilliseconds = 1000;
+constexpr double autonomousSpeedPercent = 15.0;
+
+void stopDrive() {
+    driveMotors.frontLeft.stop(brake);
+    driveMotors.frontRight.stop(brake);
+    driveMotors.backLeft.stop(brake);
+    driveMotors.backRight.stop(brake);
+}
+
+bool autonomousDrive(double forwardPercent, double rightPercent, int durationMilliseconds) {
+    if (!robotCompetition.isEnabled() || !robotCompetition.isAutonomous()) return false;
+
+    driveMotors.frontLeft.spin(forward, forwardPercent + rightPercent, percent);
+    driveMotors.frontRight.spin(forward, forwardPercent - rightPercent, percent);
+    driveMotors.backLeft.spin(forward, forwardPercent - rightPercent, percent);
+    driveMotors.backRight.spin(forward, forwardPercent + rightPercent, percent);
+    for (int elapsed = 0; elapsed < durationMilliseconds; elapsed += 10) {
+        if (!robotCompetition.isEnabled() || !robotCompetition.isAutonomous()) {
+            stopDrive();
+            return false;
+        }
+        wait(10, msec);
+    }
+    stopDrive();
+    return true;
+}
+
+void autonomous() {
+    if (!autonomousDrive(0, -autonomousSpeedPercent, autonomousRightMilliseconds)) return;
+    autonomousDrive(-autonomousSpeedPercent, 0, autonomousForwardMilliseconds);
 }
 
 void toggleIntake() {
@@ -290,14 +330,11 @@ void pickupFromIntake() {
 }
 
 int main() {
-    driveMotors.frontLeft.spin(forward);
     driveMotors.frontLeft.setStopping(brake);
-    driveMotors.frontRight.spin(forward);
     driveMotors.frontRight.setStopping(brake);
-    driveMotors.backLeft.spin(forward);
     driveMotors.backLeft.setStopping(brake);
-    driveMotors.backRight.spin(forward);
     driveMotors.backRight.setStopping(brake);
+    stopDrive();
 
     armMotor.setStopping(hold);
     // armMotor.setStopping(coast);
@@ -321,8 +358,15 @@ int main() {
     driverController.ButtonB.pressed(reverseIntake);
     driverController.ButtonY.pressed(toggleDriveSpeed);
     driverController.ButtonLeft.pressed(pickupFromIntake);
+    robotCompetition.autonomous(autonomous);
    
     while(this_thread::sleep_for(10), 1) {
+        // Leave the drivetrain to autonomous, including after its motion ends.
+        if (robotCompetition.isAutonomous()) continue;
+        if (!robotCompetition.isEnabled()) {
+            stopDrive();
+            continue;
+        }
         drive(driverController.Axis3.position(), driverController.Axis4.position(), driverController.Axis1.position());
         setArmVelocity();
         setWristVelocity();
