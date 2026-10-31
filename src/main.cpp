@@ -9,12 +9,19 @@
 #include "vex.h"
 #include "math.h"
 #include <mutex>
+#include <cmath>
 
 using namespace vex;
 
 // A global instance of vex::brain used for printing to the V5 brain screen
 brain robotBrain = brain();
 competition robotCompetition;
+
+enum colorOption {
+    BLUE, RED
+};
+
+colorOption teamColor = BLUE;
 
 // port settings
 struct {
@@ -99,6 +106,11 @@ double trueNorth() {
     return robotHeadingDegrees;
 }
 
+double exponentialCurve(double x) {
+    double y = pow(10, fabs(x)/50);
+    return fabs(x) < 2.5 ? 0 : y * (x < 0 ? -1 : 1);
+}
+
 void toggleDriveSpeed() {
     if (driveSpeedMultiplier == 0.25) {
         driveSpeedMultiplier = 0.75;
@@ -121,9 +133,9 @@ void drive(double forwardInputPercent, double strafeInputPercent, double rotatio
 }
 
 // automomnus (this is correct spelling do not change)
-constexpr int autonomousRightMilliseconds = 1500;
-constexpr int autonomousForwardMilliseconds = 1000;
-constexpr double autonomousSpeedPercent = 15.0;
+// constexpr int autonomousRightMilliseconds = 1500;
+// constexpr int autonomousForwardMilliseconds = 1000;
+// constexpr double autonomousSpeedPercent = 15.0;
 
 void stopDrive() {
     driveMotors.frontLeft.stop(brake);
@@ -150,9 +162,17 @@ bool autonomousDrive(double forwardPercent, double rightPercent, int durationMil
     return true;
 }
 
+void runToggle() {
+    auxiliaryMotor.setVelocity(100, percent);
+    auxiliaryMotor.spinToPosition(auxiliaryMotor.position(degrees) + 105, degrees);
+}
+
 void autonomous() {
-    if (!autonomousDrive(0, -autonomousSpeedPercent, autonomousRightMilliseconds)) return;
-    autonomousDrive(-autonomousSpeedPercent, 0, autonomousForwardMilliseconds);
+    // if (!autonomousDrive(0, -autonomousSpeedPercent, autonomousRightMilliseconds)) return;
+    // autonomousDrive(-autonomousSpeedPercent, 0, autonomousForwardMilliseconds);
+    runToggle();
+    if (teamColor == RED) runToggle();
+    autonomousDrive(25, 0, 1500);
 }
 
 void toggleIntake() {
@@ -252,11 +272,6 @@ void toggleClaw() {
     clawSolenoid.set(clawClosed = !clawClosed);
 }
 
-void toggleAuxiliaryMotor() {
-    static bool auxiliaryMotorEnabled = false;
-    auxiliaryMotor.setVelocity(25 * (auxiliaryMotorEnabled = !auxiliaryMotorEnabled), percent);
-}
-
 // Manual joint input cancels pickup; normal control resumes after cleanup.
 bool pickupCancelled() {
     return driverController.ButtonL1.pressing() || driverController.ButtonL2.pressing()
@@ -353,7 +368,7 @@ int main() {
 
     driverController.ButtonA.pressed(toggleIntake);
     driverController.ButtonR1.pressed(toggleClaw);
-    driverController.ButtonR2.pressed(toggleAuxiliaryMotor);
+    driverController.ButtonR2.pressed(runToggle);
     driverController.ButtonRight.pressed(toggleWristLeveling);
     driverController.ButtonB.pressed(reverseIntake);
     driverController.ButtonY.pressed(toggleDriveSpeed);
@@ -367,7 +382,7 @@ int main() {
             stopDrive();
             continue;
         }
-        drive(driverController.Axis3.position(), driverController.Axis4.position(), driverController.Axis1.position());
+        drive(exponentialCurve(driverController.Axis3.position()), exponentialCurve(driverController.Axis4.position()), exponentialCurve(driverController.Axis1.position()));
         setArmVelocity();
         setWristVelocity();
         robotBrain.Screen.printAt(10, 50, "Arm Pos: %f", armMotor.position(degrees));
