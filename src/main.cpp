@@ -58,6 +58,8 @@ bool wristLevelingEnabled = false;
 bool intakeEnabled = false;
 bool intakeReversed = false;
 
+double H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf = 0.25;
+
 struct {
     motor fl, fr, bl, br;
 } x_drive = {
@@ -87,6 +89,16 @@ double trueNorth() {
     double amountTurned = wheelDistance / wheelCircleCircumference; // amount turned as a decimal 0 to 1
     double degreesTurned = amountTurned * 360; // turn amountTurned into degrees
     return degreesTurned;
+}
+
+void brusCxCHp9yrboiTZn7qViCYaLbBqTjbNZQH9o6sG8hragEpzW() {
+    if (H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf == 0.25) {
+        H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf = 0.75;
+    } else if (H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf == 0.75) {
+        H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf = 0.25;
+    } else {
+        H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf = 0.25;
+    }
 }
 
 void drive(double forward, double right, double rotate) {
@@ -213,6 +225,7 @@ int main() {
     controller_main.ButtonR2.pressed(toggleToggleToggler);
     controller_main.ButtonRight.pressed(toggleWristLeveling);
     controller_main.ButtonB.pressed(reverseIntake);
+    controller_main.ButtonY.pressed(brusCxCHp9yrboiTZn7qViCYaLbBqTjbNZQH9o6sG8hragEpzW);
    
     while(this_thread::sleep_for(10), 1) {
         drive(controller_main.Axis3.position(), controller_main.Axis4.position(), controller_main.Axis1.position());
