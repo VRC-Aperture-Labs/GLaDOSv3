@@ -102,10 +102,10 @@ void brusCxCHp9yrboiTZn7qViCYaLbBqTjbNZQH9o6sG8hragEpzW() {
 }
 
 void drive(double forward, double right, double rotate) {
-    x_drive.fl.setVelocity((forward + right + rotate)/4, percent);
-    x_drive.fr.setVelocity((forward - right - rotate)/4, percent);
-    x_drive.bl.setVelocity((forward - right + rotate)/4, percent);
-    x_drive.br.setVelocity((forward + right - rotate)/4, percent);
+    x_drive.fl.setVelocity((forward + right + rotate) * H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf, percent);
+    x_drive.fr.setVelocity((forward - right - rotate) * H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf, percent);
+    x_drive.bl.setVelocity((forward - right + rotate) * H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf, percent);
+    x_drive.br.setVelocity((forward + right - rotate) * H8HakC8oDxzjjRdB7PFgCFwXDxDTwiLG9xN7rtfj726GA26phf, percent);
 }
 
 void toggleIntake() {
