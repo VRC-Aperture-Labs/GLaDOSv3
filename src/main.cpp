@@ -55,6 +55,9 @@ constexpr double wristLevelGain = 1;
 constexpr double wristLevelMaxSpeed = 35.0;
 bool wristLevelingEnabled = false;
 
+bool intakeEnabled = false;
+bool intakeReversed = false;
+
 struct {
     motor fl, fr, bl, br;
 } x_drive = {
@@ -87,21 +90,27 @@ double trueNorth() {
 }
 
 void drive(double forward, double right, double rotate) {
-    x_drive.fl.setVelocity(forward + right + rotate, percent);
-    x_drive.fr.setVelocity(forward - right - rotate, percent);
-    x_drive.bl.setVelocity(forward - right + rotate, percent);
-    x_drive.br.setVelocity(forward + right - rotate, percent);
+    x_drive.fl.setVelocity((forward + right + rotate)/4, percent);
+    x_drive.fr.setVelocity((forward - right - rotate)/4, percent);
+    x_drive.bl.setVelocity((forward - right + rotate)/4, percent);
+    x_drive.br.setVelocity((forward + right - rotate)/4, percent);
 }
 
 void toggleIntake() {
-    static bool enabled = false;
-
-    if (enabled)
+    if (intakeEnabled)
         intake.setVelocity(0, percent);
     else
+        intakeReversed = false;
         intake.setVelocity(100, percent);
     
-    enabled = !enabled;
+    intakeEnabled = !intakeEnabled;
+}
+
+void reverseIntake() {
+    intakeReversed = !intakeReversed;
+    if (intakeReversed && intakeEnabled) {
+        intake.setVelocity(-100, percent);
+    }
 }
 
 void setArmVelocity() {
@@ -203,6 +212,7 @@ int main() {
     controller_main.ButtonR1.pressed(toggleClaw);
     controller_main.ButtonR2.pressed(toggleToggleToggler);
     controller_main.ButtonRight.pressed(toggleWristLeveling);
+    controller_main.ButtonB.pressed(reverseIntake);
    
     while(this_thread::sleep_for(10), 1) {
         drive(controller_main.Axis3.position(), controller_main.Axis4.position(), controller_main.Axis1.position());
